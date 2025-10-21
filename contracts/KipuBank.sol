@@ -14,7 +14,7 @@ import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
 /**
  * @title KipuBankV2
- * @author Francisco Veron 
+ * @author Francisco Veron (Adapted from user's final version)
  * @notice A multi-asset (ETH & ERC20) digital vault with a USD-based withdrawal limit.
  * @dev This version removes the bank cap for compatibility with volatile assets.
  * @dev It uses AccessControl, Pausable, ReentrancyGuard, and Chainlink Oracles.
@@ -101,19 +101,19 @@ contract KipuBankV2 is AccessControl, Pausable, ReentrancyGuard {
     ////////////////////////////////////////////////////////////////////////*/
 
     modifier nonZeroAddress(address _addr) {
-        if (_addr == NATIVE_ETH) revert InvalidAddress();
+        if (_addr == address(0)) revert InvalidAddress();
         _;
     }
 
     modifier isTokenSupported(address _token) {
-        if (address(s_priceFeeds[_token]) == NATIVE_ETH) {
+        if (address(s_priceFeeds[_token]) == address(0)) {
             revert TokenNotSupported(_token);
         }
         _;
     }
 
     modifier isTokenNotSupported(address _token) {
-        if (address(s_priceFeeds[_token]) != NATIVE_ETH) {
+        if (address(s_priceFeeds[_token]) != address(0)) {
             revert TokenAlreadySupported(_token);
         }
         _;
@@ -154,8 +154,8 @@ contract KipuBankV2 is AccessControl, Pausable, ReentrancyGuard {
         address _ethPriceFeed
     ) {
         if (_maxWithdrawUSD == 0) revert InvalidAmount();
-        if (_admin == NATIVE_ETH) revert InvalidAddress();
-        if (_ethPriceFeed == NATIVE_ETH) revert InvalidPriceFeed(_ethPriceFeed);
+        if (_admin == address(0)) revert InvalidAddress();
+        if (_ethPriceFeed == address(0)) revert InvalidPriceFeed(_ethPriceFeed);
 
         // Assign core bank limits
         i_maxWithdrawUSD = _maxWithdrawUSD;
@@ -418,4 +418,43 @@ contract KipuBankV2 is AccessControl, Pausable, ReentrancyGuard {
         view
         returns (uint256)
     {
-        Agg
+        AggregatorV3Interface priceFeed = s_priceFeeds[_token];
+        (
+            ,
+            int256 price,
+            ,
+            uint256 updatedAt,
+            ,
+        ) = priceFeed.latestRoundData();
+
+        if (price <= 0) revert InvalidPriceFeed(address(priceFeed));
+        if (block.timestamp - updatedAt > s_priceFeedMaxAge) {
+            revert PriceFeedStale(_token, updatedAt);
+        }
+
+        uint8 tokenDecimals = s_tokenDecimals[_token];
+        uint8 feedDecimals = s_priceFeedDecimals[_token];
+
+        // This formula is mathematically identical to your (numerator / denom)
+        // but performs multiplication first to preserve precision.
+        return
+            (_amount * uint256(price) * (10**USD_DECIMALS)) /
+            (10**tokenDecimals) /
+            (10**feedDecimals);
+    }
+
+    /**
+     * @notice Internal view to get the contract's *actual* balance of a token.
+     */
+    function _getBankTokenBalance(address _token)
+        internal
+        view
+        returns (uint256)
+    {
+        if (_token == NATIVE_ETH) {
+            return address(this).balance;
+        } else {
+            return IERC20(_token).balanceOf(address(this));
+        }
+    }
+}
