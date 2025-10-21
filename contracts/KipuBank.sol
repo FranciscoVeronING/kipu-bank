@@ -14,7 +14,7 @@ import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
 /**
  * @title KipuBankV2
- * @author Francisco Veron (Adapted from user's final version)
+ * @author Francisco Veron
  * @notice A multi-asset (ETH & ERC20) digital vault with a USD-based withdrawal limit.
  * @dev This version removes the bank cap for compatibility with volatile assets.
  * @dev It uses AccessControl, Pausable, ReentrancyGuard, and Chainlink Oracles.
